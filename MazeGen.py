@@ -8,8 +8,8 @@ import math
 class PathNode:
     id: int
     isVisited = False
-    unvisitedNeighbors = []
-    unvDir = [0, 1, 2, 3]
+    neighbors = {}
+    unvisitedNeighbors = {}
     walls = [True, True, True, True]
 
 
@@ -25,11 +25,13 @@ class MazeGen:
         self.YOFFSET = [-1, 0, 1, 0]
         self.m_playingField = []
         _id = 0
-        # no i am not retarded, list comp would not work with ids
+        # no I am not retarded, list comp would not work with ids
         for y in range(nodeCountY):
             tempRow = []
             for x in range(nodeCountX):
-                tempRow.append(PathNode(_id))
+                a = PathNode(_id)
+                a.walls = [True, True, True, True]
+                tempRow.append(a)
                 _id += 1
             self.m_playingField.append(tempRow)
 
@@ -39,6 +41,8 @@ class MazeGen:
 
         self.m_pxSize = None
         self.m_completedMaze = False
+
+        self.m_shouldStep = True
 
         self.SetupNeighbors()
 
@@ -51,14 +55,17 @@ class MazeGen:
 
         for y, col in enumerate(self.m_playingField):
             for x, tNode in enumerate(col):
-                neighbors = []
+                neighbors = {}
+                n2eighbors = {}
                 for i in range(4):
 
                     newX = x + self.XOFFSET[i]
                     newY = y + self.YOFFSET[i]
                     if self.GetNodeBounds(newX, newY):
-                        neighbors.append((newX, newY))
+                        neighbors.update({(newX, newY): i})
+                        n2eighbors.update({(newX, newY): i})
                 tNode.unvisitedNeighbors = neighbors
+                tNode.neighbors = n2eighbors
 
     def DrawWalls(self, surface, tempX, tempY):
 
@@ -86,7 +93,10 @@ class MazeGen:
                 tempY = self.m_pxSize * y
 
                 if self.GetNodeFromPos((x, y)).isVisited:
-                    pygame.draw.rect(surface, (244, 226, 198), (tempX, tempY, self.m_pxSize, self.m_pxSize))
+                    if (x, y) in self.m_nodeStack:
+                        pygame.draw.rect(surface, (244, 226, 198), (tempX, tempY, self.m_pxSize, self.m_pxSize))
+                    else:
+                        pygame.draw.rect(surface, (255, 255, 255), (tempX, tempY, self.m_pxSize, self.m_pxSize))
                 try:
                     if (x, y) == self.m_nodeStack[-1]:
                         pygame.draw.rect(surface, (255, 0, 0), (tempX, tempY, self.m_pxSize, self.m_pxSize))
@@ -98,11 +108,25 @@ class MazeGen:
         return self.m_playingField[pos[1]][pos[0]]
 
     def HandleInput(self, event):
-        pass
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.m_shouldStep = True
+
+    def RemoveFromNeighbors(self, pos):
+
+        tNode = self.GetNodeFromPos(pos)
+        for bNode in tNode.neighbors:
+            tempNode = self.GetNodeFromPos(bNode)
+            try:
+                tempNode.unvisitedNeighbors.pop(pos)
+            except KeyError:
+                pass
+
+
+
 
     def OnClientUpdate(self):
-        if self.m_completedMaze:
-            pass
+        if self.m_completedMaze or not self.m_shouldStep:
+            return
         try:
             cNode = self.GetNodeFromPos(self.m_nodeStack[-1])
         except IndexError:
@@ -111,16 +135,24 @@ class MazeGen:
         if not cNode.isVisited:
             cNode.isVisited = True
         if len(cNode.unvisitedNeighbors) == 0:
+            print("popped node!")
+            self.RemoveFromNeighbors(self.m_nodeStack[-1])
             self.m_nodeStack.pop()
+            self.m_shouldStep = True
             return
         else:
-            cIndex = random.randint(0, len(cNode.unvisitedNeighbors) - 1)
-            tChoice = cNode.unvisitedNeighbors[cIndex]
+            tChoice = random.choice(list(cNode.unvisitedNeighbors.keys()))
             tNode = self.GetNodeFromPos(tChoice)
 
-            tNode.unvisitedNeighbors.remove(self.m_nodeStack[-1])
-            cNode.unvisitedNeighbors.remove(tChoice)
+            tNode.walls[tNode.neighbors[self.m_nodeStack[-1]]] = False
+            cNode.walls[cNode.unvisitedNeighbors[tChoice]] = False
+
+
+            self.RemoveFromNeighbors(self.m_nodeStack[-1])
+            cNode.unvisitedNeighbors.pop(tChoice)
+
 
 
             self.m_nodeStack.append(tChoice)
+            self.m_shouldStep = True
             return
